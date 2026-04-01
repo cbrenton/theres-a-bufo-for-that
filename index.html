@@ -173,7 +173,7 @@
       cell.title = `:${name}:`;
 
       const img = document.createElement("img");
-      img.src = `/bufos/${encodeURIComponent(f)}`;
+      img.src = `bufos/${encodeURIComponent(f)}`;
       img.alt = name;
       img.loading = "lazy";
       img.decoding = "async";
@@ -210,7 +210,7 @@
     }, 150);
   });
 
-  fetch("/api/list")
+  fetch("files.json")
     .then(r => r.json())
     .then(files => {
       allFiles = files;

@@ -8,7 +8,7 @@ import os
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BUFOS_DIR = None  # set from args at startup
+BUFOS_DIR = os.path.join(SCRIPT_DIR, "bufos")
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -70,21 +70,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Emoji browser")
-    parser.add_argument(
-        "emoji_dir",
-        nargs="?",
-        default=os.path.join(SCRIPT_DIR, "bufos"),
-        help="directory of emoji images (default: ./bufos)",
-    )
+    parser = argparse.ArgumentParser(description="Bufo browser")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
-    BUFOS_DIR = os.path.abspath(args.emoji_dir)
-    if not os.path.isdir(BUFOS_DIR):
-        parser.error(f"not a directory: {BUFOS_DIR}")
-
     port = args.port
     server = HTTPServer(("", port), Handler)
-    print(f"http://localhost:{port}  ({BUFOS_DIR})")
+    print(f"http://localhost:{port}")
     server.serve_forever()
