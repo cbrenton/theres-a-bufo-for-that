@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>there's a bufo for that</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f5f5f0;
+    color: #222;
+  }
+
+  #topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #f5f5f0;
+    border-bottom: 1px solid #ddd;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #topbar h1 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: #555;
+  }
+
+  #search {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 1rem;
+    border: 1.5px solid #ccc;
+    border-radius: 8px;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #search:focus { border-color: #888; }
+
+  #count {
+    font-size: 0.8rem;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .cell {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    border: 1.5px solid transparent;
+    transition: border-color 0.1s, box-shadow 0.1s;
+  }
+  .cell:hover {
+    border-color: #bbb;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  .cell img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: contain;
+    display: block;
+    padding: 8px;
+    background: #fafafa;
+  }
+
+  .cell .label {
+    padding: 4px 6px 6px;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    word-break: break-word;
+    color: #333;
+  }
+  .cell .label .dim { color: #bbb; }
+
+  .toast {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>there's a bufo for that</h1>
+  <input id="search" type="search" placeholder="jail, wizard, pull request..." autocomplete="off" autofocus>
+  <span id="count"></span>
+</div>
+
+<div id="grid"></div>
+
+<script>
+  const BUFO_RE = /^bufo[s]?$/i;
+
+  // tokenize a filename (strip extension, split on - and _)
+  function tokenize(filename) {
+    return filename.replace(/\.[^.]+$/, "").split(/[-_]+/).filter(Boolean);
+  }
+
+  // build label HTML: "bufo" tokens are dimmed
+  function buildLabel(tokens) {
+    return tokens.map(t =>
+      BUFO_RE.test(t) ? `<span class="dim">${t}</span>` : t
+    ).join("-");
+  }
+
+  function score(nameTokens, queryTokens) {
+    let s = 0;
+    for (const q of queryTokens) {
+      const exact = nameTokens.some(t => t === q);
+      const sub = nameTokens.some(t => t.includes(q));
+      if (!sub) return -1; // must match all query tokens
+      s += exact ? 2 : 1;
+    }
+    return s;
+  }
+
+  function search(files, query) {
+    const queryTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (queryTokens.length === 0) return files.map(f => ({ f, s: 0 }));
+
+    const results = [];
+    for (const f of files) {
+      const nameTokens = tokenize(f).map(t => t.toLowerCase());
+      const s = score(nameTokens, queryTokens);
+      if (s >= 0) results.push({ f, s });
+    }
+    results.sort((a, b) => b.s - a.s || a.f.localeCompare(b.f));
+    return results;
+  }
+
+  function render(results) {
+    const grid = document.getElementById("grid");
+    const count = document.getElementById("count");
+
+    count.textContent = `${results.length} bufo${results.length !== 1 ? "s" : ""}`;
+
+    const fragment = document.createDocumentFragment();
+    for (const { f } of results) {
+      const tokens = tokenize(f);
+      const name = tokens.join("-"); // extension-stripped name
+
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.title = `:${name}:`;
+
+      const img = document.createElement("img");
+      img.src = `/bufos/${encodeURIComponent(f)}`;
+      img.alt = name;
+      img.loading = "lazy";
+      img.decoding = "async";
+
+      const label = document.createElement("div");
+      label.className = "label";
+      label.innerHTML = buildLabel(tokens);
+
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.textContent = "Copied!";
+
+      cell.append(img, label, toast);
+      cell.addEventListener("click", () => {
+        navigator.clipboard.writeText(`:${name}:`).then(() => {
+          toast.classList.add("show");
+          setTimeout(() => toast.classList.remove("show"), 1200);
+        });
+      });
+
+      fragment.appendChild(cell);
+    }
+
+    grid.replaceChildren(fragment);
+  }
+
+  let allFiles = [];
+  let debounceTimer;
+
+  document.getElementById("search").addEventListener("input", e => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      render(search(allFiles, e.target.value));
+    }, 150);
+  });
+
+  fetch("/api/list")
+    .then(r => r.json())
+    .then(files => {
+      allFiles = files;
+      render(search(allFiles, ""));
+    });
+</script>
+</body>
+</html>
